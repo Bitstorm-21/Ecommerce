@@ -1,3 +1,4 @@
+
 package com.ecommerce.project.security;
 
 import com.ecommerce.project.model.AppRole;
@@ -5,6 +6,10 @@ import com.ecommerce.project.model.Role;
 import com.ecommerce.project.model.User;
 import com.ecommerce.project.repositories.RoleRepository;
 import com.ecommerce.project.repositories.UserRepository;
+import com.ecommerce.project.security.jwt.AuthEntryPointJwt;
+import com.ecommerce.project.security.jwt.AuthTokenFilter;
+import com.ecommerce.project.security.services.UserDetailsServiceImpl;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
@@ -13,7 +18,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer;
@@ -26,23 +30,19 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import com.ecommerce.project.security.jwt.AuthEntryPointJwt;
-import com.ecommerce.project.security.jwt.AuthTokenFilter;
-import com.ecommerce.project.security.services.UserDetailsServiceImpl;
-
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 
 @Configuration
 @EnableWebSecurity
-//@EnableMethodSecurity
 public class WebSecurityConfig {
+
     @Value("${app.cors.allowed-origins}")
     private String allowedOrigins;
 
     @Autowired
-    UserDetailsServiceImpl userDetailsService;
+    private UserDetailsServiceImpl userDetailsService;
 
     @Autowired
     private AuthEntryPointJwt unauthorizedHandler;
@@ -52,18 +52,19 @@ public class WebSecurityConfig {
         return new AuthTokenFilter();
     }
 
-
     @Bean
     public DaoAuthenticationProvider authenticationProvider() {
-        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider(userDetailsService);
+        DaoAuthenticationProvider authProvider =
+                new DaoAuthenticationProvider(userDetailsService);
+
         authProvider.setPasswordEncoder(passwordEncoder());
 
         return authProvider;
     }
 
-
     @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration authConfig) throws Exception {
+    public AuthenticationManager authenticationManager(
+            AuthenticationConfiguration authConfig) throws Exception {
         return authConfig.getAuthenticationManager();
     }
 
@@ -72,21 +73,29 @@ public class WebSecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
-
-
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http)
+            throws Exception {
+
         http.csrf(csrf -> csrf.disable())
-                .cors(cors->{})
-                .exceptionHandling(exception -> exception.authenticationEntryPoint(unauthorizedHandler))
-                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .cors(cors -> {})
+                .exceptionHandling(exception ->
+                        exception.authenticationEntryPoint(unauthorizedHandler))
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
+
+                        .requestMatchers(
+                                org.springframework.http.HttpMethod.OPTIONS,
+                                "/**"
+                        ).permitAll()
+
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/error").permitAll()
 
+                        .requestMatchers("/api/seller/**")
+                        .hasAnyRole("ADMIN", "SELLER")
 
-                        .requestMatchers("/api/seller/**").hasAnyRole("ADMIN","SELLER")
                         .requestMatchers("/v3/api-docs/**").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/api/admin/**").permitAll()
@@ -94,122 +103,147 @@ public class WebSecurityConfig {
                         .requestMatchers("/swagger-ui/**").permitAll()
                         .requestMatchers("/api/test/**").permitAll()
                         .requestMatchers("/images/**").permitAll()
+
                         .anyRequest().authenticated()
                 );
 
         http.authenticationProvider(authenticationProvider());
 
-        http.addFilterBefore(authenticationJwtTokenFilter(), UsernamePasswordAuthenticationFilter.class);
-        http.headers(headers -> headers.frameOptions(
-                frameOptions -> frameOptions.sameOrigin()));
+        http.addFilterBefore(
+                authenticationJwtTokenFilter(),
+                UsernamePasswordAuthenticationFilter.class
+        );
+
+        http.headers(headers ->
+                headers.frameOptions(frameOptions -> frameOptions.sameOrigin()));
 
         return http.build();
     }
 
     @Bean
     public WebSecurityCustomizer webSecurityCustomizer() {
-        return (web -> web.ignoring().requestMatchers("/v2/api-docs",
+        return web -> web.ignoring().requestMatchers(
+                "/v2/api-docs",
                 "/configuration/ui",
                 "/swagger-resources/**",
                 "/configuration/security",
                 "/swagger-ui.html",
-                "/webjars/**"));
+                "/webjars/**"
+        );
     }
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
+
         String[] origins = Arrays.stream(allowedOrigins.split(","))
                 .map(String::trim)
                 .toArray(String[]::new);
 
         CorsConfiguration configuration = new CorsConfiguration();
+
         configuration.setAllowedOriginPatterns(List.of(origins));
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        configuration.setAllowedMethods(
+                List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
+        );
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
-        configuration.setExposedHeaders(List.of("Authorization", "Set-Cookie"));
+        configuration.setExposedHeaders(
+                List.of("Authorization", "Set-Cookie")
+        );
 
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        UrlBasedCorsConfigurationSource source =
+                new UrlBasedCorsConfigurationSource();
+
         source.registerCorsConfiguration("/**", configuration);
+
         return source;
     }
 
-@Bean
-public CommandLineRunner initData(
-        RoleRepository roleRepository,
-        UserRepository userRepository,
-        PasswordEncoder passwordEncoder) {
+    // Initialize roles and default users
+    @Bean
+    public CommandLineRunner initData(
+            RoleRepository roleRepository,
+            UserRepository userRepository,
+            PasswordEncoder passwordEncoder) {
 
-    return args -> initializeDatabase(
-            roleRepository,
-            userRepository,
-            passwordEncoder
-    );
+        return args -> {
+
+            // Create roles if they do not exist
+            Role userRole = roleRepository
+                    .findByRoleName(AppRole.ROLE_USER)
+                    .orElseGet(() ->
+                            roleRepository.save(new Role(AppRole.ROLE_USER))
+                    );
+
+            Role sellerRole = roleRepository
+                    .findByRoleName(AppRole.ROLE_SELLER)
+                    .orElseGet(() ->
+                            roleRepository.save(new Role(AppRole.ROLE_SELLER))
+                    );
+
+            Role adminRole = roleRepository
+                    .findByRoleName(AppRole.ROLE_ADMIN)
+                    .orElseGet(() ->
+                            roleRepository.save(new Role(AppRole.ROLE_ADMIN))
+                    );
+
+            Set<Role> userRoles = Set.of(userRole);
+            Set<Role> sellerRoles = Set.of(sellerRole);
+            Set<Role> adminRoles = Set.of(
+                    userRole,
+                    sellerRole,
+                    adminRole
+            );
+
+            // Create default user
+            if (!userRepository.existsByUserName("user1")) {
+                User user1 = new User(
+                        "user1",
+                        "user1@example.com",
+                        passwordEncoder.encode("password1")
+                );
+
+                userRepository.save(user1);
+            }
+
+            // Create default seller
+            if (!userRepository.existsByUserName("seller1")) {
+                User seller1 = new User(
+                        "seller1",
+                        "seller1@example.com",
+                        passwordEncoder.encode("password2")
+                );
+
+                userRepository.save(seller1);
+            }
+
+            // Create default admin
+            if (!userRepository.existsByUserName("admin")) {
+                User admin = new User(
+                        "admin",
+                        "admin@example.com",
+                        passwordEncoder.encode("adminPass")
+                );
+
+                userRepository.save(admin);
+            }
+
+            // Assign roles to users
+            userRepository.findByUserName("user1").ifPresent(user -> {
+                user.setRoles(userRoles);
+                userRepository.save(user);
+            });
+
+            userRepository.findByUserName("seller1").ifPresent(seller -> {
+                seller.setRoles(sellerRoles);
+                userRepository.save(seller);
+            });
+
+            userRepository.findByUserName("admin").ifPresent(admin -> {
+                admin.setRoles(adminRoles);
+                userRepository.save(admin);
+            });
+        };
+    }
 }
 
-@Transactional
-public void initializeDatabase(
-        RoleRepository roleRepository,
-        UserRepository userRepository,
-        PasswordEncoder passwordEncoder) {
-
-    // Create roles if they do not exist
-    Role userRole = roleRepository.findByRoleName(AppRole.ROLE_USER)
-            .orElseGet(() -> roleRepository.save(new Role(AppRole.ROLE_USER)));
-
-    Role sellerRole = roleRepository.findByRoleName(AppRole.ROLE_SELLER)
-            .orElseGet(() -> roleRepository.save(new Role(AppRole.ROLE_SELLER)));
-
-    Role adminRole = roleRepository.findByRoleName(AppRole.ROLE_ADMIN)
-            .orElseGet(() -> roleRepository.save(new Role(AppRole.ROLE_ADMIN)));
-
-    Set<Role> userRoles = Set.of(userRole);
-    Set<Role> sellerRoles = Set.of(sellerRole);
-    Set<Role> adminRoles = Set.of(userRole, sellerRole, adminRole);
-
-    // Create users if they do not exist
-    if (!userRepository.existsByUserName("user1")) {
-        User user1 = new User(
-                "user1",
-                "user1@example.com",
-                passwordEncoder.encode("password1")
-        );
-        userRepository.save(user1);
-    }
-
-    if (!userRepository.existsByUserName("seller1")) {
-        User seller1 = new User(
-                "seller1",
-                "seller1@example.com",
-                passwordEncoder.encode("password2")
-        );
-        userRepository.save(seller1);
-    }
-
-    if (!userRepository.existsByUserName("admin")) {
-        User admin = new User(
-                "admin",
-                "admin@example.com",
-                passwordEncoder.encode("adminPass")
-        );
-        userRepository.save(admin);
-    }
-
-    // Assign roles
-    userRepository.findByUserName("user1").ifPresent(user -> {
-        user.setRoles(userRoles);
-        userRepository.save(user);
-    });
-
-    userRepository.findByUserName("seller1").ifPresent(seller -> {
-        seller.setRoles(sellerRoles);
-        userRepository.save(seller);
-    });
-
-    userRepository.findByUserName("admin").ifPresent(admin -> {
-        admin.setRoles(adminRoles);
-        userRepository.save(admin);
-    });
-}
-
-}
